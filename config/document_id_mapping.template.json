@@ -1,0 +1,7 @@
+{
+  "README": "Plantilla para mapear rutas relativas del corpus a códigos normativos verificados. No usar códigos sin contrastar con la matriz.",
+  "mapping": {
+    "INTERNOS/archivo-estatuto.docx": "INT-EST",
+    "EXTERNOS/archivo-loes.pdf": "EXT-LOES"
+  }
+}

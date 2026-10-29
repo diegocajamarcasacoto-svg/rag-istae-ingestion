@@ -1,0 +1,2 @@
+# Motor de extracción de PDF, DOCX y estructura de tablas
+docling==2.144.0
