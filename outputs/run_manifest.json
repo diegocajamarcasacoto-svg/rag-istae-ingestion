@@ -1,7 +1,7 @@
 {
-  "inventory_count": 2,
-  "processed_documents": 2,
-  "chunks_count": 520,
+  "inventory_count": 47,
+  "processed_documents": 46,
+  "chunks_count": 9623,
   "failed_count": 0,
   "empty_text_count": 0,
   "documents_without_chunks_count": 0,
@@ -20,7 +20,7 @@
   "errors": [],
   "warnings": [],
   "passed": true,
-  "generated_at_utc": "2026-10-29T04:46:52.201046+00:00",
+  "generated_at_utc": "2026-10-29T05:51:03.337233+00:00",
   "corpus_root": "E:\\UIDE\\Maestria\\TMF\\Entregable 2\\app\\CORPUS",
   "output_dir": "E:\\UIDE\\Maestria\\TMF\\Entregable 2\\app\\rag_istae_ingestion\\outputs",
   "python_version": "3.11.13 | packaged by conda-forge | (main, Jun  4 2025, 14:39:58) [MSC v.1943 64 bit (AMD64)]",
@@ -28,7 +28,9 @@
   "config_sha256": "59ed96fe9bc352a2b9997147b8f84878a2ede3c2727edfbe3b4d80237d4580fc",
   "pipeline_version": "0.3.0",
   "source_extensions": [
-    ".pdf"
+    ".docx",
+    ".pdf",
+    ".xlsx"
   ],
   "extraction_extensions": [
     ".docx",
@@ -39,9 +41,9 @@
   "table_structure_enabled": true,
   "min_text_chars_before_ocr": 100,
   "timing_method": "time.perf_counter",
-  "timed_documents_count": 2,
-  "documents_with_timing_count": 2,
-  "pipeline_duration_seconds": 521.574,
-  "pipeline_duration_minutes": 8.69,
-  "pipeline_duration_human": "8 min 42 s"
+  "timed_documents_count": 46,
+  "documents_with_timing_count": 46,
+  "pipeline_duration_seconds": 3003.372,
+  "pipeline_duration_minutes": 50.06,
+  "pipeline_duration_human": "50 min 03 s"
 }

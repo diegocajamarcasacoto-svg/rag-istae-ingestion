@@ -1,2 +1,8 @@
 # Motor de extracción de PDF, DOCX y estructura de tablas
 docling==2.144.0
+# Embeddings y modelos de lenguaje
+sentence-transformers>=3.0,<6.0
+qdrant-client>=1.12,<2.0
+torch>=2.2
+# Motor de búsqueda BM25
+rank-bm25>=0.2.2,<0.3

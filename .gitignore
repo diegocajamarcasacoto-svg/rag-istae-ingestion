@@ -5,3 +5,5 @@ venv/
 .spyproject/
 .pytest_cache/
 models/
+outputs/
+vector_store/

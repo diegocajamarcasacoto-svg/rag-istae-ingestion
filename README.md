@@ -1,196 +1,617 @@
-# Pipeline de ingesta reproducible — RAG normativo ISTAE
+# RAG ISTAE
+## Estado del proyecto y contexto técnico
 
-**Versión del pipeline:** `0.2.0`  
-**Entorno:** Windows, Python 3.11.13  
-**Motor de extracción:** Docling 2.144.0  
-**Motor de fragmentación:** `HierarchicalChunker`  
-**Coste de software:** cero, utilizando herramientas de código abierto.
+**Proyecto:** Sistema de recuperación aumentada por generación (RAG) sobre corpus normativo del ISTAE.  
+**Contexto académico:** Trabajo de Fin de Máster en Inteligencia Artificial Aplicada.  
+**Estado:** Prototipo funcional de ingestión, indexación y recuperación híbrida con reranking.  
+**Etapa actual:** Evaluación del rendimiento y preparación de una refactorización arquitectónica.
 
-El objetivo de esta etapa es preparar el corpus normativo del ISTAE para los experimentos posteriores de recuperación aumentada por generación (RAG).
+---
 
-La ingesta trabaja sobre los documentos originales sin modificarlos, renombrarlos ni moverlos. Los resultados se guardan en archivos derivados dentro de `outputs/`.
+# 1. Objetivo del proyecto
 
-**Estado actual:** extracción y fragmentación implementadas; validación técnica ampliada; ejecución completa del corpus pendiente. Embeddings, índice vectorial, recuperación y generación todavía no están implementados.
+Desarrollar un sistema RAG capaz de consultar un corpus documental institucional y normativo del ISTAE, recuperando información relevante mediante técnicas de búsqueda léxica y semántica, y posteriormente utilizando un modelo de lenguaje para generar respuestas fundamentadas en los documentos recuperados.
 
-## Qué hace
+El proyecto busca establecer una arquitectura modular que permita:
 
-1. Inventaría los documentos y archivos de apoyo, registrando ruta relativa, extensión, tamaño, fecha de modificación y hash SHA-256.
-2. Extrae PDF y DOCX mediante Docling.
-3. Mantiene habilitada la detección de estructura de tablas durante la conversión de PDF.
-4. Ejecuta primero la extracción sin OCR y repite la conversión con OCR cuando el texto extraído resulta insuficiente según los umbrales configurados.
-5. Genera fragmentos mediante `HierarchicalChunker`, conservando la estructura disponible en el documento Docling.
-6. Asigna identificadores de documento y fragmento, y conserva metadatos de procedencia, estructura y extracción.
-7. Valida IDs, metadatos obligatorios, texto, longitudes, tipos de datos y coherencia entre documentos y fragmentos.
-8. Genera archivos JSONL, un manifiesto de ejecución y archivos de texto extraído.
-9. Permite repetir la ingesta regenerando las salidas derivadas, sin alterar los documentos originales.
+- Procesar documentos heterogéneos.
+- Extraer y fragmentar información documental.
+- Generar representaciones vectoriales.
+- Indexar contenido para recuperación semántica y léxica.
+- Ejecutar recuperación híbrida.
+- Mejorar la relevancia mediante reranking.
+- Construir contextos documentales para el modelo generativo.
+- Generar respuestas fundamentadas en el corpus.
+- Mantener trazabilidad hacia los documentos originales.
 
-La detección de tablas no garantiza que todas sus celdas se reconstruyan correctamente. Las advertencias de Docling deben revisarse cuando puedan afectar al contenido normativo.
+El objetivo de evolución es pasar del prototipo ejecutado mediante scripts independientes a una arquitectura de consulta persistente y preparada para producción.
 
-## 1. Requisitos e instalación
+# 2. Entorno de desarrollo
 
-Se utiliza Python 3.11 en un entorno virtual dedicado.
-
-Desde PowerShell, en la carpeta raíz del proyecto:
-
-```powershell
-py -3.11 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-```
-
-Si PowerShell bloquea la activación del entorno, se puede invocar directamente su intérprete:
-
-```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-```
-
-La dependencia directa principal de la versión actual es:
-
-```text
-docling==2.144.0
-```
-
-El archivo `requirements.txt` debe reflejar las dependencias directas que utiliza el código vigente. No debe copiarse automáticamente todo el contenido de `pip freeze`, porque puede incluir herramientas instaladas para experimentos anteriores.
-
-### Registro del entorno experimental
-
-Se conserva `requirements-lock.txt` como registro de las versiones instaladas durante el entorno experimental:
-
-```powershell
-python -m pip freeze > requirements-lock.txt
-```
-
-Este archivo es una fotografía del entorno, no una lista depurada de dependencias directas.
-
-Antes de recrear el entorno virtual, se recomienda conservar el registro y comprobar que los modelos necesarios de Docling estén disponibles localmente.
-
-### Modelos de Docling
-
-Los modelos se descargaron previamente en la carpeta local:
-
-```text
-models/docling/
-```
-
-La disponibilidad de los modelos debe comprobarse en el entorno limpio antes de procesar el corpus completo. No se debe asumir que una instalación nueva puede ejecutarse sin conexión hasta verificarlo.
-
-## 2. Configurar el corpus
-
-La configuración se encuentra en:
-
-```text
-config/config.json
-```
-
-La propiedad `corpus_root` debe apuntar a la carpeta que contiene las subcarpetas del corpus, por ejemplo:
-
-```json
-{
-  "corpus_root": "E:\\UIDE\\Maestria\\TMF\\Entregable 2\\app\\CORPUS",
-  "output_dir": "outputs",
-  "include_extensions": [
-    ".pdf",
-    ".docx"
-  ],
-  "inventory_extensions": [
-    ".pdf",
-    ".docx",
-    ".xlsx",
-    ".xls",
-    ".doc"
-  ],
-  "exclude_directory_names": [
-    ".git",
-    ".venv",
-    "venv",
-    "__pycache__",
-    "outputs",
-    "build",
-    "dist"
-  ],
-  "min_text_chars_before_ocr": 100,
-  "min_chars_per_page_before_ocr": 100
-}
-```
-
-Este bloque representa la configuración de referencia para la estrategia actual. Debe conservarse cualquier otro parámetro requerido por el código vigente.
-
-### Inventario y extracción
-
-- `inventory_extensions`: extensiones que se registran en el inventario.
-- `include_extensions`: extensiones que se procesan mediante Docling.
-- `exclude_directory_names`: directorios excluidos de la exploración.
-- `min_text_chars_before_ocr`: umbral mínimo de caracteres totales para evaluar la extracción de un PDF.
-- `min_chars_per_page_before_ocr`: umbral mínimo del promedio de caracteres por página.
-
-El inventario puede contener archivos que no se extraen, como XLSX, XLS y DOC. Por tanto, el número de documentos inventariados no tiene que coincidir necesariamente con el número de documentos procesados.
-
-**Importante:** la ruta del corpus debe ser lo suficientemente específica para evitar incluir documentos ajenos al experimento. No es necesario mover ni borrar los originales para resolver este problema.
-
-## 3. Estrategia de extracción y OCR
-
-La extracción documental utiliza Docling.
-
-### PDF
-
-1. Se ejecuta una primera conversión sin OCR.
-2. Se calcula la cantidad total de caracteres y, cuando se dispone del número de páginas, el promedio de caracteres por página.
-3. Si se incumple alguno de los umbrales configurados, se repite la conversión con OCR.
-4. Se registran el resultado final, el uso de OCR y el motivo de activación.
-
-El promedio de caracteres por página es una heurística. No demuestra que todas las páginas contengan texto ni que el texto sea correcto.
-
-### DOCX
-
-Los documentos DOCX se procesan mediante Docling sin OCR.
-
-### Tablas
-
-La detección de estructura de tablas permanece habilitada en las conversiones de PDF, incluidas las que usan OCR.
-
-Docling puede advertir que algunas celdas no encajan en la cuadrícula reconstruida y que han sido descartadas. Estas advertencias requieren revisión cuando afectan a tablas con datos, relaciones entre columnas o información normativa.
-
-No se considera validada una tabla únicamente porque aparezca en el Markdown exportado.
-
-## 4. Fragmentación y metadatos
-
-La fragmentación utiliza `HierarchicalChunker` sobre el documento estructurado de Docling.
-
-No se aplica una fragmentación jurídica personalizada por artículos en esta etapa. La calidad de la estructura jerárquica debe evaluarse mediante inspección de muestras.
-
-### Esquema de los fragmentos
-
-Cada registro de `chunks.jsonl` contiene los siguientes campos:
-
-| Campo | Descripción |
+| Elemento | Configuración |
 |---|---|
-| `chunk_id` | Identificador del fragmento, compuesto por el código documental y su índice. |
-| `document_id` | Identificador del documento, preferiblemente su código estable, por ejemplo `EXT07`. |
-| `source_file` | Ruta relativa del documento de origen. |
-| `chunk_index` | Índice del fragmento dentro del documento. |
-| `headings` | Encabezados estructurales disponibles. |
-| `page_numbers` | Números de página disponibles en la procedencia de Docling. |
-| `item_types` | Tipos de elementos detectados, como texto o tabla. |
-| `text` | Contenido textual del fragmento. |
-| `char_count` | Número de caracteres de `text`. |
-| `chunking_method` | Método de fragmentación utilizado. |
-| `source_sha256` | Hash SHA-256 del documento de origen. |
-| `extraction_method` | Motor de extracción utilizado. |
-| `ocr_attempted` | Indica si se ejecutó la conversión de respaldo con OCR. |
-| `ocr_enabled` | Indica si la conversión asociada utilizó OCR. |
-| `ocr_reason` | Motivo de activación del OCR, cuando corresponde. |
+| Sistema operativo | Windows |
+| IDE | Visual Studio Code |
+| Lenguaje | Python 3.11 |
+| Entorno virtual | `.venv` |
+| Ejecución | PowerShell |
+| Inferencia | CPU |
+| Base vectorial | Qdrant local |
+| Modelos | Almacenamiento local |
 
-### Identificación documental
-
-Se utiliza el código documental como identificador cuando puede extraerse de forma inequívoca del nombre del archivo:
+Ruta del proyecto:
 
 ```text
-EXT07:00001
-EXT07:00002
-EXT07:00003
+E:\UIDE\Maestria\TMF\Entregable 2\app\rag_istae_ingestion
 ```
 
-El `document_id` identifica el documento dentro del corpus, mientras que `source_sha256` identifica la versión exacta del archivo.
+Ruta del corpus:
 
-El `chunk_id` no identifica por sí solo una versión del contenido. Si se modifica el documento o la fragmentación, un mismo ID podría corresponder a texto
+```text
+E:\UIDE\Maestria\TMF\Entregable 2\app\CORPUS
+```
+
+Configuración principal:
+
+```text
+config/rag_config.json
+```
+
+# 3. Estado de la ingestión documental
+
+Se ejecutó el procesamiento del corpus y se generaron los fragmentos documentales utilizados en la indexación.
+
+## 3.1 Inventario
+
+| Indicador | Resultado |
+|---|---:|
+| Archivos inventariados | 47 |
+| Documentos procesados | 46 |
+| Archivos XLSX solo inventariados | 1 |
+| Chunks generados | 9.623 |
+| Fallos de procesamiento | 0 |
+
+El corpus contiene documentos PDF y DOCX, entre otros formatos inventariados.
+
+## 3.2 Archivos de salida de ingestión
+
+Se generaron, entre otros, los siguientes artefactos:
+
+```text
+outputs/
+    chunks.jsonl
+    inventory.jsonl
+    document_results.jsonl
+    document_mapping.jsonl
+    run_manifest.json
+    extracted_text/
+```
+
+Estos archivos constituyen los resultados de la etapa de ingestión.
+
+# 4. Modelos utilizados
+
+## 4.1 Modelo de embeddings
+
+**Modelo:** `intfloat/multilingual-e5-base`
+
+Ubicación local:
+
+```text
+models/multilingual-e5-base
+```
+
+Características:
+
+- Dimensión vectorial: 768.
+- Prefijo documental: `passage:`.
+- Prefijo de consulta: `query:`.
+- Normalización de embeddings habilitada.
+- Inferencia CPU.
+- Longitud máxima configurada según la configuración del proyecto.
+
+Los prefijos son parte fundamental del funcionamiento del modelo y deben preservarse durante cualquier refactorización.
+
+## 4.2 Modelo de reranking
+
+**Modelo:** `BAAI/bge-reranker-v2-m3`
+
+Ubicación local:
+
+```text
+models/bge-reranker-v2-m3
+```
+
+Implementación mediante `CrossEncoder` de Sentence Transformers.
+
+Responsabilidad:
+
+Evaluar pares consulta-fragmento para volver a ordenar los candidatos recuperados por el sistema híbrido.
+
+Configuración actual:
+
+- Inferencia CPU.
+- Carga local.
+- Evaluación de candidatos recuperados mediante RRF.
+
+## 4.3 Modelo de procesamiento documental
+
+Ubicación:
+
+```text
+models/docling
+```
+
+Se mantiene como parte de los recursos locales utilizados por la etapa documental.
+
+# 5. Base de datos vectorial
+
+**Motor:** Qdrant.
+
+**Modo:** Local con persistencia en disco.
+
+Ubicación:
+
+```text
+vector_store/qdrant
+```
+
+Colección:
+
+```text
+istae_chunks_e5_base
+```
+
+Características conocidas:
+
+| Propiedad | Valor |
+|---|---|
+| Puntos indexados | 9.623 |
+| Dimensiones | 768 |
+| Distancia | Cosine |
+| Modelo de embeddings | multilingual-e5-base |
+
+El payload contiene información documental y de fragmentación, incluyendo:
+
+- `chunk_id`
+- `document_id`
+- `source_file`
+- `page_numbers`
+- `text`
+- `headings`
+- `chunk_index`
+
+También se incluye metadata de indexación relacionada con el modelo, dimensiones y hash del corpus.
+
+La colección existente es un recurso persistente validado. No debe eliminarse ni reconstruirse durante una refactorización ordinaria.
+
+# 6. Arquitectura de recuperación implementada
+
+Actualmente el proyecto cuenta con una arquitectura de recuperación híbrida compuesta por cuatro etapas.
+
+## 6.1 Recuperación vectorial
+
+Se utiliza E5 para generar el embedding de la consulta y recuperar fragmentos semánticamente similares desde Qdrant.
+
+## 6.2 Recuperación léxica
+
+Se utiliza BM25 nativo de Qdrant mediante `TextQuery`.
+
+El índice textual se configura sobre el campo:
+
+```text
+text
+```
+
+La preparación del índice textual se encuentra separada de la ejecución de consultas.
+
+## 6.3 Fusión de resultados
+
+Se utiliza Reciprocal Rank Fusion (RRF) para combinar los resultados de la recuperación vectorial y léxica.
+
+Configuración conocida:
+
+```text
+rrf-k = 60
+```
+
+La fusión se realiza utilizando las posiciones de los resultados de cada recuperador.
+
+## 6.4 Reranking
+
+Los candidatos resultantes de RRF son evaluados por BGE Reranker.
+
+El modelo vuelve a ordenar los fragmentos en función de su relevancia para la consulta.
+
+La salida actual permite visualizar:
+
+- Posición original en RRF.
+- Score RRF.
+- Score del reranker.
+- Identificador del fragmento.
+- Documento de origen.
+- Página.
+- Texto recuperado.
+
+# 7. Scripts existentes
+
+Los siguientes scripts forman parte de la implementación conocida:
+
+| Archivo | Responsabilidad |
+|---|---|
+| `scripts/index_vectors.py` | Indexación de embeddings en Qdrant |
+| `scripts/index_qdrant_bm25.py` | Preparación del índice textual nativo de Qdrant |
+| `scripts/search_qdrant_bm25.py` | Consulta léxica BM25 nativo |
+| `scripts/search_hybrid.py` | Recuperación híbrida E5 + BM25 + RRF |
+| `scripts/search_reranked.py` | Recuperación híbrida con reranking BGE |
+| `scripts/inspect_qdrant.py` | Inspección de colección, fragmentos y vecinos |
+| `scripts/search_vectors.py` | Consulta vectorial |
+| `scripts/index_bm25.py` | Indexación BM25 standalone |
+| `scripts/search_bm25.py` | Consulta BM25 standalone |
+| `scripts/utils.py` | Funciones auxiliares |
+| `scripts/enable_qdrant_bm25.py` | Script anterior de preparación y consulta BM25 |
+
+La lista debe contrastarse con el inventario real del repositorio antes de reorganizar archivos.
+
+Los scripts standalone BM25 (`rank-bm25`) no deben confundirse con la implementación BM25 nativa de Qdrant.
+
+# 8. Recuperación de fragmentos vecinos
+
+Se implementó y probó una funcionalidad de inspección que permite recuperar fragmentos anteriores y posteriores a uno determinado.
+
+La búsqueda se realiza mediante:
+
+- `document_id`
+- `chunk_index`
+
+Ejemplo:
+
+```powershell
+python -u .\scripts\inspect_qdrant.py --config .\config\rag_config.json --chunk-id INT08:00055 --neighbors 1
+```
+
+La funcionalidad permite recuperar contexto adicional del mismo documento.
+
+**Decisión arquitectónica actual:**
+
+La recuperación de vecinos no se ha integrado todavía en el pipeline de reranking.
+
+Se considera una responsabilidad posterior, correspondiente a la construcción del contexto que será enviado al LLM.
+
+# 9. Validaciones funcionales realizadas
+
+Se han ejecutado pruebas con consultas normativas y académicas.
+
+## 9.1 Consulta normativa
+
+Pregunta:
+
+```text
+Art. 357 Constitución de la República
+```
+
+El recuperador BM25 identificó como resultado relevante:
+
+```text
+EXT01:00089
+```
+
+Correspondiente a la LOES, página 6, con contenido sustantivo sobre el financiamiento de las instituciones públicas de educación superior.
+
+El reranker BGE ubicó este fragmento en primera posición.
+
+## 9.2 Consulta sobre egreso y titulación
+
+Pregunta:
+
+```text
+¿Qué requisitos necesito cumplir para que me declaren egresado y luego poder titularme?
+```
+
+Se identificaron los siguientes fragmentos relacionados:
+
+| Chunk | Contenido |
+|---|---|
+| INT08:00039 | Artículo 12. Declaración de egresado |
+| INT08:00040 | Lista de requisitos para declaración de egresado |
+| INT08:00041 | Solicitud de declaración de egresado y condiciones |
+| INT08:00042 | Artículo 13. Requisitos para titularse |
+
+Se identificó una limitación importante:
+
+El fragmento `INT08:00040`, que contiene la lista específica de requisitos de egreso, no apareció entre los 20 candidatos recuperados por RRF.
+
+Esto demuestra que el reranker no puede recuperar información que no está presente en su conjunto inicial de candidatos.
+
+La mejora de cobertura debe evaluarse desde la recuperación inicial, no solamente desde el reranking.
+
+## 9.3 Consulta compuesta
+
+Pregunta:
+
+```text
+¿Puedo hacer el trabajo de integración curricular con un compañero y cuál es la nota mínima para aprobarlo?
+```
+
+Los resultados incluyeron fragmentos relacionados con:
+
+- Trabajo individual o en equipo.
+- Condiciones de aprobación.
+- Nota mínima.
+- Ponderación de evaluaciones.
+
+Se observó que una pregunta puede necesitar varios fragmentos relevantes y no solamente el resultado con mayor score.
+
+# 10. Rendimiento actual
+
+Se han realizado pruebas con 20 y 10 candidatos.
+
+## 10.1 Prueba con 20 candidatos
+
+| Etapa | Tiempo |
+|---|---:|
+| Carga modelo E5 | 4,047 s |
+| Carga reranker | 4,739 s |
+| Embedding consulta | 0,191 s |
+| Apertura Qdrant | 4,719 s |
+| Búsqueda híbrida | 0,337 s |
+| Reranking | 5,742 s |
+| Total | 19,782 s |
+
+## 10.2 Prueba con 10 candidatos
+
+| Etapa | Tiempo |
+|---|---:|
+| Carga modelo E5 | 3,584 s |
+| Carga reranker | 3,758 s |
+| Embedding consulta | 0,210 s |
+| Apertura Qdrant | 5,413 s |
+| Búsqueda híbrida | 0,355 s |
+| Reranking | 3,115 s |
+| Total | 16,442 s |
+
+## 10.3 Interpretación
+
+Los tiempos muestran que:
+
+1. La carga de modelos representa un coste importante.
+2. La apertura de Qdrant también representa un coste significativo.
+3. La búsqueda híbrida tiene tiempos reducidos.
+4. El reranking aumenta su coste al incrementar los candidatos.
+5. El número de candidatos debe equilibrar cobertura, calidad y latencia.
+
+La principal oportunidad de optimización identificada es mantener los modelos y el cliente Qdrant inicializados durante la vida de un servicio persistente.
+
+Todavía no se ha medido la latencia de un servicio con recursos residentes en memoria.
+
+# 11. Arquitectura lógica actual
+
+```text
+                    CONSULTA
+                       |
+                       v
+              EMBEDDING E5
+                       |
+                       v
+          +------------+------------+
+          |                         |
+          v                         v
+    BÚSQUEDA VECTORIAL         BÚSQUEDA BM25
+          |                         |
+          +------------+------------+
+                       |
+                       v
+                      RRF
+                       |
+                       v
+                TOP K CANDIDATOS
+                       |
+                       v
+                 BGE RERANKER
+                       |
+                       v
+               TOP K RESULTADOS
+                       |
+                       v
+                    FIN
+```
+
+La construcción del contexto y la generación mediante LLM todavía no forman parte del pipeline implementado.
+
+# 12. Arquitectura objetivo
+
+Se plantea evolucionar hacia una arquitectura modular que separe claramente la ingestión offline y la consulta online.
+
+La siguiente estructura es una propuesta inicial, no una estructura ya implementada:
+
+```text
+rag_istae_ingestion/
+│
+├── app/
+│   ├── core/
+│   │   └── configuration
+│   │
+│   ├── ingestion/
+│   │
+│   ├── indexing/
+│   │
+│   ├── retrieval/
+│   │
+│   ├── reranking/
+│   │
+│   ├── context/
+│   │
+│   ├── services/
+│   │
+│   └── api/
+│
+├── scripts/
+│
+├── config/
+│
+├── models/
+│
+├── outputs/
+│
+├── vector_store/
+│
+├── evaluation/
+│
+└── tests/
+```
+
+## 12.1 Servicio persistente
+
+Se propone utilizar FastAPI y su mecanismo de ciclo de vida (`lifespan`) para inicializar una sola vez:
+
+- Modelo E5.
+- Modelo BGE.
+- Cliente Qdrant.
+
+Las consultas posteriores reutilizarán estos recursos.
+
+## 12.2 Separación de responsabilidades
+
+La arquitectura deberá distinguir:
+
+**Ingestión e indexación offline**
+- Extracción documental.
+- Fragmentación.
+- Generación de embeddings.
+- Indexación vectorial.
+- Indexación léxica.
+
+**Consulta online**
+- Embedding de consulta.
+- Recuperación híbrida.
+- Fusión RRF.
+- Reranking.
+- Construcción del contexto.
+- Generación mediante LLM.
+
+La implementación de contexto y generación se realizará posteriormente.
+
+# 13. Decisiones técnicas que deben preservarse
+
+Durante la refactorización se deben mantener:
+
+1. Modelo `intfloat/multilingual-e5-base`.
+2. Modelo `BAAI/bge-reranker-v2-m3`.
+3. Prefijos `passage:` y `query:`.
+4. Dimensión vectorial de 768.
+5. Normalización de embeddings.
+6. Colección Qdrant `istae_chunks_e5_base`.
+7. BM25 nativo de Qdrant.
+8. Fusión RRF.
+9. Parámetro RRF k = 60, salvo evaluación que justifique cambios.
+10. Identificadores de chunks existentes.
+11. Estructura del payload documental.
+12. Compatibilidad con la configuración JSON.
+13. Compatibilidad con los artefactos de ingestión existentes.
+
+No se debe reindexar el corpus ni recrear la colección como parte de la refactorización.
+
+# 14. Próximas etapas
+
+## Etapa 1. Auditoría arquitectónica
+
+- Inventariar archivos.
+- Analizar dependencias.
+- Identificar duplicaciones.
+- Revisar responsabilidades.
+- Diseñar arquitectura objetivo.
+
+## Etapa 2. Refactorización estructural
+
+- Separar configuración.
+- Separar servicios de recuperación.
+- Centralizar inicialización de modelos.
+- Separar lógica de negocio y scripts.
+- Preservar compatibilidad.
+
+## Etapa 3. Servicio persistente
+
+- Incorporar FastAPI.
+- Inicializar E5, BGE y Qdrant una sola vez.
+- Implementar endpoint de consulta.
+- Medir latencia real.
+- Evaluar concurrencia.
+
+## Etapa 4. Evaluación de recuperación
+
+Construir un conjunto de preguntas representativas y fragmentos relevantes verificados manualmente.
+
+Métricas previstas:
+
+- Recall@20.
+- Recall@50.
+- MRR@5.
+- nDCG@5.
+- Latencia por etapa.
+
+## Etapa 5. Construcción del contexto
+
+Implementar una capa independiente que gestione:
+
+- Recuperación de vecinos.
+- Agrupación documental.
+- Deduplicación.
+- Solapamientos.
+- Límite de tokens.
+- Trazabilidad de fuentes.
+
+## Etapa 6. Integración del LLM
+
+Incorporar generación de respuestas fundamentadas en el contexto recuperado.
+
+Se deberá evaluar:
+
+- Fidelidad documental.
+- Precisión de las respuestas.
+- Trazabilidad de citas.
+- Respuestas sin evidencia suficiente.
+- Comportamiento ante preguntas compuestas.
+
+# 15. Reglas para futuras modificaciones
+
+Este proyecto ya cuenta con componentes funcionales y resultados validados.
+
+Por tanto, cualquier refactorización deberá respetar las siguientes reglas:
+
+- No modificar componentes validados sin justificación.
+- No eliminar scripts antes de comprobar sus dependencias.
+- No alterar los datos persistentes.
+- No descargar nuevamente los modelos si ya están disponibles localmente.
+- No cambiar los modelos sin una evaluación comparativa.
+- No sacrificar cobertura documental para mejorar latencia.
+- No mezclar ingestión offline y consulta online.
+- Mantener pruebas de regresión.
+- Realizar modificaciones por fases.
+- Documentar decisiones arquitectónicas.
+- Mantener compatibilidad con Windows y el entorno Python existente.
+
+**Principio rector:** cada fase debe dejar el proyecto en un estado funcional y verificable antes de comenzar la siguiente.
+
+---
+
+# 16. Estado resumido
+
+| Componente | Estado |
+|---|---|
+| Inventario documental | Implementado |
+| Procesamiento del corpus | Implementado |
+| Fragmentación | Implementada |
+| Embeddings E5 | Implementados |
+| Indexación vectorial | Implementada |
+| BM25 nativo Qdrant | Implementado |
+| Recuperación híbrida | Implementada |
+| Fusión RRF | Implementada |
+| BGE Reranker | Implementado |
+| Inspección de Qdrant | Implementada |
+| Recuperación de vecinos | Probada |
+| Evaluación sistemática | Pendiente |
+| Context Builder | Pendiente |
+| API persistente | Pendiente |
+| Integración LLM | Pendiente |
+
+**Última actualización:** 29 de octubre de 2026.

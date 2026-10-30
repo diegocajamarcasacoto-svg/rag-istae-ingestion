@@ -1,0 +1,12 @@
+{
+  "chunks_path": "./outputs/chunks.jsonl",
+  "model_name": "intfloat/multilingual-e5-base",
+  "model_local_path": "./models/multilingual-e5-base",
+  "qdrant_path": "./vector_store/qdrant",
+  "collection_name": "istae_chunks_e5_base",
+  "batch_size": 8,
+  "normalize_embeddings": true,
+  "distance": "cosine",
+  "max_seq_length": 512,
+  "recreate_collection": false
+}
