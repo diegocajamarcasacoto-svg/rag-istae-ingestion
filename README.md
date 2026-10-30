@@ -1,4 +1,6 @@
 # RAG ISTAE
+
+> Estado arquitectonico: este repositorio administra exclusivamente ingestión e indexación. La consulta E5 + BM25 nativo + RRF + BGE vive en `rag-istae-query`; los modelos, corpus, outputs y Qdrant se administran en `rag-istae-resources`. Copie `config/config.example.json` y `config/rag_config.example.json` a sus archivos locales equivalentes y configure rutas absolutas al almacenamiento compartido antes de ejecutar scripts.
 ## Estado del proyecto y contexto técnico
 
 **Proyecto:** Sistema de recuperación aumentada por generación (RAG) sobre corpus normativo del ISTAE.  

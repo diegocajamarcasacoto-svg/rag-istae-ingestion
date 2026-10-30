@@ -1,8 +1,8 @@
 {
-  "chunks_path": "./outputs/chunks.jsonl",
+  "chunks_path": "C:/RAG-ISTAE/storage/outputs/chunks.jsonl",
   "model_name": "intfloat/multilingual-e5-base",
-  "model_local_path": "./models/multilingual-e5-base",
-  "qdrant_path": "./vector_store/qdrant",
+  "model_local_path": "C:/RAG-ISTAE/storage/models/multilingual-e5-base",
+  "qdrant_path": "C:/RAG-ISTAE/storage/vector_store/qdrant",
   "collection_name": "istae_chunks_e5_base",
   "batch_size": 8,
   "normalize_embeddings": true,

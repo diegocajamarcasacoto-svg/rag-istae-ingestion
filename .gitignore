@@ -7,3 +7,5 @@ venv/
 models/
 outputs/
 vector_store/
+config/config.json
+config/rag_config.json
