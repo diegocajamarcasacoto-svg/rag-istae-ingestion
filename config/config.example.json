@@ -3,7 +3,7 @@
   "output_dir": "C:/RAG-ISTAE/storage/outputs",
   "include_extensions": [".pdf", ".docx"],
   "inventory_extensions": [".pdf", ".docx", ".xlsx", ".xls", ".doc"],
-  "exclude_directory_names": [".git", ".venv", "venv", "__pycache__", "outputs", "build", "dist"],
+  "exclude_directory_names": [".git", ".venv", "venv", "__pycache__", "outputs", "build", "dist", "GOLD STANDARD"],
   "min_text_chars_before_ocr": 100,
   "min_chars_per_page_before_ocr": 100
 }

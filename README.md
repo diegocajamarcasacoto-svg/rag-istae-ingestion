@@ -1,619 +1,123 @@
-# RAG ISTAE
+# RAG ISTAE Ingestion
 
-> Estado arquitectonico: este repositorio administra exclusivamente ingestión e indexación. La consulta E5 + BM25 nativo + RRF + BGE vive en `rag-istae-query`; los modelos, corpus, outputs y Qdrant se administran en `rag-istae-resources`. Copie `config/config.example.json` y `config/rag_config.example.json` a sus archivos locales equivalentes y configure rutas absolutas al almacenamiento compartido antes de ejecutar scripts.
-## Estado del proyecto y contexto técnico
+Ingestión e indexación **offline** del corpus normativo del ISTAE para el sistema RAG del Trabajo de Fin de Máster en Inteligencia Artificial Aplicada.
 
-**Proyecto:** Sistema de recuperación aumentada por generación (RAG) sobre corpus normativo del ISTAE.  
-**Contexto académico:** Trabajo de Fin de Máster en Inteligencia Artificial Aplicada.  
-**Estado:** Prototipo funcional de ingestión, indexación y recuperación híbrida con reranking.  
-**Etapa actual:** Evaluación del rendimiento y preparación de una refactorización arquitectónica.
+Este repositorio forma parte de una solución de tres repositorios independientes:
 
----
-
-# 1. Objetivo del proyecto
-
-Desarrollar un sistema RAG capaz de consultar un corpus documental institucional y normativo del ISTAE, recuperando información relevante mediante técnicas de búsqueda léxica y semántica, y posteriormente utilizando un modelo de lenguaje para generar respuestas fundamentadas en los documentos recuperados.
-
-El proyecto busca establecer una arquitectura modular que permita:
-
-- Procesar documentos heterogéneos.
-- Extraer y fragmentar información documental.
-- Generar representaciones vectoriales.
-- Indexar contenido para recuperación semántica y léxica.
-- Ejecutar recuperación híbrida.
-- Mejorar la relevancia mediante reranking.
-- Construir contextos documentales para el modelo generativo.
-- Generar respuestas fundamentadas en el corpus.
-- Mantener trazabilidad hacia los documentos originales.
-
-El objetivo de evolución es pasar del prototipo ejecutado mediante scripts independientes a una arquitectura de consulta persistente y preparada para producción.
-
-# 2. Entorno de desarrollo
-
-| Elemento | Configuración |
+| Repositorio | Responsabilidad |
 |---|---|
-| Sistema operativo | Windows |
-| IDE | Visual Studio Code |
-| Lenguaje | Python 3.11 |
-| Entorno virtual | `.venv` |
-| Ejecución | PowerShell |
-| Inferencia | CPU |
-| Base vectorial | Qdrant local |
-| Modelos | Almacenamiento local |
+| `rag_istae_ingestion` (este) | Inventario, extracción, fragmentación, embeddings e indexación en Qdrant. |
+| `rag-istae-query` | Consulta de solo lectura: recuperación híbrida, RRF, reranking, Context Builder y generación con Gemini. |
+| `rag-istae-resources` | Almacenamiento compartido: modelos, corpus, salidas de ingestión y persistencia Qdrant. |
 
-Ruta del proyecto:
+Este repositorio no contiene lógica de consulta. Los scripts de búsqueda e inspección que antes vivían aquí se trasladaron a `rag-istae-query`.
 
-```text
-E:\UIDE\Maestria\TMF\Entregable 2\app\rag_istae_ingestion
-```
+## Instalación
 
-Ruta del corpus:
+1. Cree un entorno virtual con Python 3.11 e instale `pip install -r requirements.txt` (`docling==2.144.0`, `sentence-transformers`, `qdrant-client`, `torch`).
+2. Prepare y valide `rag-istae-resources`.
+3. Copie `config/config.example.json` a `config/config.json` y `config/rag_config.example.json` a `config/rag_config.json`. Asigne **rutas absolutas** al almacenamiento compartido (`rag-istae-resources/storage`). Ambos archivos locales están excluidos de git.
 
-```text
-E:\UIDE\Maestria\TMF\Entregable 2\app\CORPUS
-```
+Entorno de referencia: Windows, PowerShell, inferencia en CPU, Qdrant local con persistencia en disco.
 
-Configuración principal:
+## Flujo
 
 ```text
-config/rag_config.json
+storage/corpus (PDF, DOCX)
+      │  run_pipeline.py
+      ▼
+inventario + hash ─► extracción Docling (OCR condicional) ─► HierarchicalChunker ─► validación
+      │
+      ▼
+storage/outputs/chunks.jsonl (+ inventory, document_results, document_mapping, run_manifest, extracted_text/)
+      │  scripts/index_vectors.py
+      ▼
+Qdrant: colección istae_chunks_e5_base (E5 768 d, coseno)
+      │  scripts/index_qdrant_bm25.py
+      ▼
+índice de texto nativo de Qdrant sobre payload.text (usado por BM25 en rag-istae-query)
 ```
 
-# 3. Estado de la ingestión documental
+### 1. Ingestión documental
 
-Se ejecutó el procesamiento del corpus y se generaron los fragmentos documentales utilizados en la indexación.
+```powershell
+python .\run_pipeline.py --config .\config\config.json
+```
 
-## 3.1 Inventario
+El pipeline (`src/ingestion/`) no genera embeddings ni se conecta a Qdrant:
+
+| Módulo | Función |
+|---|---|
+| `inventory.py` | Recorre `corpus_root`, excluye `exclude_directory_names` y calcula SHA-256 de los archivos con `inventory_extensions`. |
+| `extract.py` | Convierte PDF y DOCX con Docling. Los PDF se convierten primero sin OCR; si el total de caracteres o el promedio por página queda bajo `min_text_chars_before_ocr` / `min_chars_per_page_before_ocr`, se repite la conversión con OCR. |
+| `chunk.py` | Fragmenta el documento estructurado de Docling con `HierarchicalChunker` (no el Markdown exportado). Descarta fragmentos vacíos. |
+| `validate.py` | Validación técnica: identificadores ausentes o duplicados, metadatos obligatorios, tipos, coherencia documento–fragmentos. No demuestra fidelidad jurídica del texto extraído. |
+| `pipeline.py` | Orquesta las etapas, procesa cada documento de forma aislada (un error no detiene al resto) y escribe las salidas y el manifiesto. |
+
+Solo se extraen `.pdf` y `.docx` (`include_extensions`); `.xlsx`, `.xls` y `.doc` se inventarían pero no se procesan.
+
+**Identificadores.** `document_id` se toma del prefijo `EXT##` / `INT##` del nombre del archivo (si no existe, se usa el nombre sin extensión). `chunk_id` es `<document_id>:<chunk_index con 5 dígitos>`, por ejemplo `INT08:00055`; `chunk_index` empieza en 1 y es consecutivo dentro del documento.
+
+**Campos de cada chunk** (`chunks.jsonl`): `chunk_id`, `document_id`, `source_file` (ruta relativa), `chunk_index`, `headings`, `page_numbers`, `item_types`, `text`, `char_count`, `chunking_method` (`docling_hierarchical`), `source_sha256`, `extraction_method`, `ocr_attempted`, `ocr_enabled`, `ocr_reason`. En DOCX `page_numbers` y `headings` suelen quedar vacíos.
+
+**Salidas** en `output_dir`:
+
+| Archivo | Contenido |
+|---|---|
+| `inventory.jsonl` | Archivos inventariados con hash y tamaño. |
+| `document_results.jsonl` | Estado, métricas de extracción/OCR y tiempos por documento. |
+| `chunks.jsonl` | Fragmentos con metadatos. |
+| `document_mapping.jsonl` | `document_id` ↔ ruta relativa ↔ hash. |
+| `extracted_text/<sha256>.txt` | Texto extraído por documento. |
+| `run_manifest.json` | Resultado de la validación, versiones, configuración y tiempos de la ejecución. |
+
+> **Nota.** `corpus_root` apunta a `rag-istae-resources/storage/corpus`, que también contiene la carpeta `GOLD STANDARD` (DOCX/XLSX de evaluación). Por eso `GOLD STANDARD` figura en `exclude_directory_names` (en `config.json` y en el ejemplo); la comparación no distingue mayúsculas. No retire esa exclusión: el acta de validación se procesaría como un documento del corpus.
+
+### 2. Indexación vectorial
+
+```powershell
+python .\scripts\index_vectors.py --config .\config\rag_config.json --offline
+```
+
+- Codifica cada chunk como `passage: <texto>` con `intfloat/multilingual-e5-base` (CPU, `max_seq_length` 512, embeddings normalizados).
+- El ID del punto es un UUID5 determinista derivado de `chunk_id`, por lo que la indexación es reproducible.
+- El payload es el chunk completo más `_index_metadata` (`embedding_model`, `embedding_dimensions`, `corpus_sha256`).
+- `--offline` exige que los pesos existan localmente.
+- Si la colección ya existe, el script no la reconstruye. `--recreate` (o `recreate_collection: true`) **borra y recrea** la colección: no lo use sobre la colección validada.
+
+### 3. Índice de texto para BM25
+
+```powershell
+python .\scripts\index_qdrant_bm25.py --config .\config\rag_config.json
+```
+
+Crea sobre la colección existente un índice de payload de texto en `text` (tokenizador `word`, minúsculas, `scoring` habilitado). Este índice es el que usa `models.TextQuery` en `rag-istae-query`. No confundir con BM25 standalone (`rank-bm25`), que ya no forma parte del proyecto.
+
+No ejecute la indexación mientras `rag-istae-query` tenga abierta la persistencia Qdrant local.
+
+## Estado actual
+
+Última ejecución validada (`run_manifest.json`, `pipeline_version` 0.3.0, `passed: true`):
 
 | Indicador | Resultado |
 |---|---:|
 | Archivos inventariados | 47 |
-| Documentos procesados | 46 |
+| Documentos procesados (13 EXT + 33 INT) | 46 |
 | Archivos XLSX solo inventariados | 1 |
 | Chunks generados | 9.623 |
 | Fallos de procesamiento | 0 |
 
-El corpus contiene documentos PDF y DOCX, entre otros formatos inventariados.
+Colección Qdrant `istae_chunks_e5_base`: 9.623 puntos, 768 dimensiones, distancia coseno, índice de texto sobre `text`.
 
-## 3.2 Archivos de salida de ingestión
+## Pruebas
 
-Se generaron, entre otros, los siguientes artefactos:
+Los archivos de `tests/` son en su mayoría scripts exploratorios de la etapa de selección del motor de extracción (Docling, Docling híbrido, Unstructured hi-res, Unstructured + LlamaIndex) y requieren el corpus y `config/config.json`. `test_chunk.py` corresponde a una versión anterior del chunker basada en texto y no es compatible con la firma actual de `chunk_document`. No existe todavía una suite de regresión automatizada para este repositorio.
 
-```text
-outputs/
-    chunks.jsonl
-    inventory.jsonl
-    document_results.jsonl
-    document_mapping.jsonl
-    run_manifest.json
-    extracted_text/
-```
+## Decisiones que deben preservarse
 
-Estos archivos constituyen los resultados de la etapa de ingestión.
-
-# 4. Modelos utilizados
-
-## 4.1 Modelo de embeddings
-
-**Modelo:** `intfloat/multilingual-e5-base`
-
-Ubicación local:
-
-```text
-models/multilingual-e5-base
-```
-
-Características:
-
-- Dimensión vectorial: 768.
-- Prefijo documental: `passage:`.
-- Prefijo de consulta: `query:`.
-- Normalización de embeddings habilitada.
-- Inferencia CPU.
-- Longitud máxima configurada según la configuración del proyecto.
-
-Los prefijos son parte fundamental del funcionamiento del modelo y deben preservarse durante cualquier refactorización.
-
-## 4.2 Modelo de reranking
-
-**Modelo:** `BAAI/bge-reranker-v2-m3`
-
-Ubicación local:
-
-```text
-models/bge-reranker-v2-m3
-```
-
-Implementación mediante `CrossEncoder` de Sentence Transformers.
-
-Responsabilidad:
-
-Evaluar pares consulta-fragmento para volver a ordenar los candidatos recuperados por el sistema híbrido.
-
-Configuración actual:
-
-- Inferencia CPU.
-- Carga local.
-- Evaluación de candidatos recuperados mediante RRF.
-
-## 4.3 Modelo de procesamiento documental
-
-Ubicación:
-
-```text
-models/docling
-```
-
-Se mantiene como parte de los recursos locales utilizados por la etapa documental.
-
-# 5. Base de datos vectorial
-
-**Motor:** Qdrant.
-
-**Modo:** Local con persistencia en disco.
-
-Ubicación:
-
-```text
-vector_store/qdrant
-```
-
-Colección:
-
-```text
-istae_chunks_e5_base
-```
-
-Características conocidas:
-
-| Propiedad | Valor |
-|---|---|
-| Puntos indexados | 9.623 |
-| Dimensiones | 768 |
-| Distancia | Cosine |
-| Modelo de embeddings | multilingual-e5-base |
-
-El payload contiene información documental y de fragmentación, incluyendo:
-
-- `chunk_id`
-- `document_id`
-- `source_file`
-- `page_numbers`
-- `text`
-- `headings`
-- `chunk_index`
-
-También se incluye metadata de indexación relacionada con el modelo, dimensiones y hash del corpus.
-
-La colección existente es un recurso persistente validado. No debe eliminarse ni reconstruirse durante una refactorización ordinaria.
-
-# 6. Arquitectura de recuperación implementada
-
-Actualmente el proyecto cuenta con una arquitectura de recuperación híbrida compuesta por cuatro etapas.
-
-## 6.1 Recuperación vectorial
-
-Se utiliza E5 para generar el embedding de la consulta y recuperar fragmentos semánticamente similares desde Qdrant.
-
-## 6.2 Recuperación léxica
-
-Se utiliza BM25 nativo de Qdrant mediante `TextQuery`.
-
-El índice textual se configura sobre el campo:
-
-```text
-text
-```
-
-La preparación del índice textual se encuentra separada de la ejecución de consultas.
-
-## 6.3 Fusión de resultados
-
-Se utiliza Reciprocal Rank Fusion (RRF) para combinar los resultados de la recuperación vectorial y léxica.
-
-Configuración conocida:
-
-```text
-rrf-k = 60
-```
-
-La fusión se realiza utilizando las posiciones de los resultados de cada recuperador.
-
-## 6.4 Reranking
-
-Los candidatos resultantes de RRF son evaluados por BGE Reranker.
-
-El modelo vuelve a ordenar los fragmentos en función de su relevancia para la consulta.
-
-La salida actual permite visualizar:
-
-- Posición original en RRF.
-- Score RRF.
-- Score del reranker.
-- Identificador del fragmento.
-- Documento de origen.
-- Página.
-- Texto recuperado.
-
-# 7. Scripts existentes
-
-Los siguientes scripts forman parte de la implementación conocida:
-
-| Archivo | Responsabilidad |
-|---|---|
-| `scripts/index_vectors.py` | Indexación de embeddings en Qdrant |
-| `scripts/index_qdrant_bm25.py` | Preparación del índice textual nativo de Qdrant |
-| `scripts/search_qdrant_bm25.py` | Consulta léxica BM25 nativo |
-| `scripts/search_hybrid.py` | Recuperación híbrida E5 + BM25 + RRF |
-| `scripts/search_reranked.py` | Recuperación híbrida con reranking BGE |
-| `scripts/inspect_qdrant.py` | Inspección de colección, fragmentos y vecinos |
-| `scripts/search_vectors.py` | Consulta vectorial |
-| `scripts/index_bm25.py` | Indexación BM25 standalone |
-| `scripts/search_bm25.py` | Consulta BM25 standalone |
-| `scripts/utils.py` | Funciones auxiliares |
-| `scripts/enable_qdrant_bm25.py` | Script anterior de preparación y consulta BM25 |
-
-La lista debe contrastarse con el inventario real del repositorio antes de reorganizar archivos.
-
-Los scripts standalone BM25 (`rank-bm25`) no deben confundirse con la implementación BM25 nativa de Qdrant.
-
-# 8. Recuperación de fragmentos vecinos
-
-Se implementó y probó una funcionalidad de inspección que permite recuperar fragmentos anteriores y posteriores a uno determinado.
-
-La búsqueda se realiza mediante:
-
-- `document_id`
-- `chunk_index`
-
-Ejemplo:
-
-```powershell
-python -u .\scripts\inspect_qdrant.py --config .\config\rag_config.json --chunk-id INT08:00055 --neighbors 1
-```
-
-La funcionalidad permite recuperar contexto adicional del mismo documento.
-
-**Decisión arquitectónica actual:**
-
-La recuperación de vecinos no se ha integrado todavía en el pipeline de reranking.
-
-Se considera una responsabilidad posterior, correspondiente a la construcción del contexto que será enviado al LLM.
-
-# 9. Validaciones funcionales realizadas
-
-Se han ejecutado pruebas con consultas normativas y académicas.
-
-## 9.1 Consulta normativa
-
-Pregunta:
-
-```text
-Art. 357 Constitución de la República
-```
-
-El recuperador BM25 identificó como resultado relevante:
-
-```text
-EXT01:00089
-```
-
-Correspondiente a la LOES, página 6, con contenido sustantivo sobre el financiamiento de las instituciones públicas de educación superior.
-
-El reranker BGE ubicó este fragmento en primera posición.
-
-## 9.2 Consulta sobre egreso y titulación
-
-Pregunta:
-
-```text
-¿Qué requisitos necesito cumplir para que me declaren egresado y luego poder titularme?
-```
-
-Se identificaron los siguientes fragmentos relacionados:
-
-| Chunk | Contenido |
-|---|---|
-| INT08:00039 | Artículo 12. Declaración de egresado |
-| INT08:00040 | Lista de requisitos para declaración de egresado |
-| INT08:00041 | Solicitud de declaración de egresado y condiciones |
-| INT08:00042 | Artículo 13. Requisitos para titularse |
-
-Se identificó una limitación importante:
-
-El fragmento `INT08:00040`, que contiene la lista específica de requisitos de egreso, no apareció entre los 20 candidatos recuperados por RRF.
-
-Esto demuestra que el reranker no puede recuperar información que no está presente en su conjunto inicial de candidatos.
-
-La mejora de cobertura debe evaluarse desde la recuperación inicial, no solamente desde el reranking.
-
-## 9.3 Consulta compuesta
-
-Pregunta:
-
-```text
-¿Puedo hacer el trabajo de integración curricular con un compañero y cuál es la nota mínima para aprobarlo?
-```
-
-Los resultados incluyeron fragmentos relacionados con:
-
-- Trabajo individual o en equipo.
-- Condiciones de aprobación.
-- Nota mínima.
-- Ponderación de evaluaciones.
-
-Se observó que una pregunta puede necesitar varios fragmentos relevantes y no solamente el resultado con mayor score.
-
-# 10. Rendimiento actual
-
-Se han realizado pruebas con 20 y 10 candidatos.
-
-## 10.1 Prueba con 20 candidatos
-
-| Etapa | Tiempo |
-|---|---:|
-| Carga modelo E5 | 4,047 s |
-| Carga reranker | 4,739 s |
-| Embedding consulta | 0,191 s |
-| Apertura Qdrant | 4,719 s |
-| Búsqueda híbrida | 0,337 s |
-| Reranking | 5,742 s |
-| Total | 19,782 s |
-
-## 10.2 Prueba con 10 candidatos
-
-| Etapa | Tiempo |
-|---|---:|
-| Carga modelo E5 | 3,584 s |
-| Carga reranker | 3,758 s |
-| Embedding consulta | 0,210 s |
-| Apertura Qdrant | 5,413 s |
-| Búsqueda híbrida | 0,355 s |
-| Reranking | 3,115 s |
-| Total | 16,442 s |
-
-## 10.3 Interpretación
-
-Los tiempos muestran que:
-
-1. La carga de modelos representa un coste importante.
-2. La apertura de Qdrant también representa un coste significativo.
-3. La búsqueda híbrida tiene tiempos reducidos.
-4. El reranking aumenta su coste al incrementar los candidatos.
-5. El número de candidatos debe equilibrar cobertura, calidad y latencia.
-
-La principal oportunidad de optimización identificada es mantener los modelos y el cliente Qdrant inicializados durante la vida de un servicio persistente.
-
-Todavía no se ha medido la latencia de un servicio con recursos residentes en memoria.
-
-# 11. Arquitectura lógica actual
-
-```text
-                    CONSULTA
-                       |
-                       v
-              EMBEDDING E5
-                       |
-                       v
-          +------------+------------+
-          |                         |
-          v                         v
-    BÚSQUEDA VECTORIAL         BÚSQUEDA BM25
-          |                         |
-          +------------+------------+
-                       |
-                       v
-                      RRF
-                       |
-                       v
-                TOP K CANDIDATOS
-                       |
-                       v
-                 BGE RERANKER
-                       |
-                       v
-               TOP K RESULTADOS
-                       |
-                       v
-                    FIN
-```
-
-La construcción del contexto y la generación mediante LLM todavía no forman parte del pipeline implementado.
-
-# 12. Arquitectura objetivo
-
-Se plantea evolucionar hacia una arquitectura modular que separe claramente la ingestión offline y la consulta online.
-
-La siguiente estructura es una propuesta inicial, no una estructura ya implementada:
-
-```text
-rag_istae_ingestion/
-│
-├── app/
-│   ├── core/
-│   │   └── configuration
-│   │
-│   ├── ingestion/
-│   │
-│   ├── indexing/
-│   │
-│   ├── retrieval/
-│   │
-│   ├── reranking/
-│   │
-│   ├── context/
-│   │
-│   ├── services/
-│   │
-│   └── api/
-│
-├── scripts/
-│
-├── config/
-│
-├── models/
-│
-├── outputs/
-│
-├── vector_store/
-│
-├── evaluation/
-│
-└── tests/
-```
-
-## 12.1 Servicio persistente
-
-Se propone utilizar FastAPI y su mecanismo de ciclo de vida (`lifespan`) para inicializar una sola vez:
-
-- Modelo E5.
-- Modelo BGE.
-- Cliente Qdrant.
-
-Las consultas posteriores reutilizarán estos recursos.
-
-## 12.2 Separación de responsabilidades
-
-La arquitectura deberá distinguir:
-
-**Ingestión e indexación offline**
-- Extracción documental.
-- Fragmentación.
-- Generación de embeddings.
-- Indexación vectorial.
-- Indexación léxica.
-
-**Consulta online**
-- Embedding de consulta.
-- Recuperación híbrida.
-- Fusión RRF.
-- Reranking.
-- Construcción del contexto.
-- Generación mediante LLM.
-
-La implementación de contexto y generación se realizará posteriormente.
-
-# 13. Decisiones técnicas que deben preservarse
-
-Durante la refactorización se deben mantener:
-
-1. Modelo `intfloat/multilingual-e5-base`.
-2. Modelo `BAAI/bge-reranker-v2-m3`.
-3. Prefijos `passage:` y `query:`.
-4. Dimensión vectorial de 768.
-5. Normalización de embeddings.
-6. Colección Qdrant `istae_chunks_e5_base`.
-7. BM25 nativo de Qdrant.
-8. Fusión RRF.
-9. Parámetro RRF k = 60, salvo evaluación que justifique cambios.
-10. Identificadores de chunks existentes.
-11. Estructura del payload documental.
-12. Compatibilidad con la configuración JSON.
-13. Compatibilidad con los artefactos de ingestión existentes.
-
-No se debe reindexar el corpus ni recrear la colección como parte de la refactorización.
-
-# 14. Próximas etapas
-
-## Etapa 1. Auditoría arquitectónica
-
-- Inventariar archivos.
-- Analizar dependencias.
-- Identificar duplicaciones.
-- Revisar responsabilidades.
-- Diseñar arquitectura objetivo.
-
-## Etapa 2. Refactorización estructural
-
-- Separar configuración.
-- Separar servicios de recuperación.
-- Centralizar inicialización de modelos.
-- Separar lógica de negocio y scripts.
-- Preservar compatibilidad.
-
-## Etapa 3. Servicio persistente
-
-- Incorporar FastAPI.
-- Inicializar E5, BGE y Qdrant una sola vez.
-- Implementar endpoint de consulta.
-- Medir latencia real.
-- Evaluar concurrencia.
-
-## Etapa 4. Evaluación de recuperación
-
-Construir un conjunto de preguntas representativas y fragmentos relevantes verificados manualmente.
-
-Métricas previstas:
-
-- Recall@20.
-- Recall@50.
-- MRR@5.
-- nDCG@5.
-- Latencia por etapa.
-
-## Etapa 5. Construcción del contexto
-
-Implementar una capa independiente que gestione:
-
-- Recuperación de vecinos.
-- Agrupación documental.
-- Deduplicación.
-- Solapamientos.
-- Límite de tokens.
-- Trazabilidad de fuentes.
-
-## Etapa 6. Integración del LLM
-
-Incorporar generación de respuestas fundamentadas en el contexto recuperado.
-
-Se deberá evaluar:
-
-- Fidelidad documental.
-- Precisión de las respuestas.
-- Trazabilidad de citas.
-- Respuestas sin evidencia suficiente.
-- Comportamiento ante preguntas compuestas.
-
-# 15. Reglas para futuras modificaciones
-
-Este proyecto ya cuenta con componentes funcionales y resultados validados.
-
-Por tanto, cualquier refactorización deberá respetar las siguientes reglas:
-
-- No modificar componentes validados sin justificación.
-- No eliminar scripts antes de comprobar sus dependencias.
-- No alterar los datos persistentes.
-- No descargar nuevamente los modelos si ya están disponibles localmente.
-- No cambiar los modelos sin una evaluación comparativa.
-- No sacrificar cobertura documental para mejorar latencia.
-- No mezclar ingestión offline y consulta online.
-- Mantener pruebas de regresión.
-- Realizar modificaciones por fases.
-- Documentar decisiones arquitectónicas.
-- Mantener compatibilidad con Windows y el entorno Python existente.
-
-**Principio rector:** cada fase debe dejar el proyecto en un estado funcional y verificable antes de comenzar la siguiente.
-
----
-
-# 16. Estado resumido
-
-| Componente | Estado |
-|---|---|
-| Inventario documental | Implementado |
-| Procesamiento del corpus | Implementado |
-| Fragmentación | Implementada |
-| Embeddings E5 | Implementados |
-| Indexación vectorial | Implementada |
-| BM25 nativo Qdrant | Implementado |
-| Recuperación híbrida | Implementada |
-| Fusión RRF | Implementada |
-| BGE Reranker | Implementado |
-| Inspección de Qdrant | Implementada |
-| Recuperación de vecinos | Probada |
-| Evaluación sistemática | Pendiente |
-| Context Builder | Pendiente |
-| API persistente | Pendiente |
-| Integración LLM | Pendiente |
-
-**Última actualización:** 29 de octubre de 2026.
+- Modelo `intfloat/multilingual-e5-base`, prefijos `passage:` / `query:`, 768 dimensiones y normalización.
+- Colección `istae_chunks_e5_base`, identificadores `chunk_id` y estructura del payload: `rag-istae-query` depende de `document_id` + `chunk_index` consecutivos para expandir vecinos.
+- Índice de texto nativo de Qdrant para BM25.
+- No reindexar el corpus ni recrear la colección sin una decisión explícita; cualquier cambio de modelo requiere evaluación comparativa.
+- No mezclar ingestión offline con consulta online.
+- Los scripts no descargan modelos; los modelos se gestionan en `rag-istae-resources`.
