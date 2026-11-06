@@ -8,7 +8,8 @@ Flujo:
 3. Extraer PDF y DOCX mediante Docling.
 4. Fragmentar con HierarchicalChunker.
 5. Guardar texto extraído, fragmentos y resultados por documento.
-6. Validar la ejecución y generar el manifiesto.
+6. Agrupar los fragmentos en unidades normativas (artículos) -> units.jsonl.
+7. Validar la ejecución y generar el manifiesto.
 
 Los documentos originales no se modifican.
 El pipeline no genera embeddings ni se conecta a una base vectorial.
@@ -31,6 +32,7 @@ from typing import Any
 from .chunk import chunk_document
 from .extract import extract_document
 from .inventory import build_inventory
+from .units import UNITS_VERSION, build_units
 from .utils import sha256_file, write_jsonl
 from .validate import validate_run
 
@@ -67,6 +69,43 @@ def stable_document_id(relative_path: str) -> str:
     return filename.strip()
 
 
+def resolve_paths(config: dict[str, Any], config_path: Path) -> tuple[Path, Path]:
+    """Resuelve corpus_root y output_dir; las rutas relativas parten del proyecto."""
+
+    corpus_root = Path(config["corpus_root"]).expanduser()
+
+    if not corpus_root.is_absolute():
+        corpus_root = (config_path.parent / corpus_root).resolve()
+
+    output_dir = Path(config.get("output_dir", "outputs"))
+
+    if not output_dir.is_absolute():
+        output_dir = (
+            config_path.parent.parent / output_dir
+        ).resolve()
+
+    return corpus_root, output_dir
+
+
+def write_units(output_dir: Path, chunks: list[dict[str, Any]]) -> dict[str, Any]:
+    """Genera units.jsonl y units_report.json a partir de los fragmentos.
+
+    Devuelve el informe. No modifica chunks.jsonl ni los fragmentos.
+    """
+
+    start = time.perf_counter()
+    units, report = build_units(chunks)
+    write_jsonl(output_dir / "units.jsonl", units)
+    report["duration_seconds"] = round(time.perf_counter() - start, 3)
+    report_path = output_dir / "units_report.json"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(
+        json.dumps(report, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return report
+
+
 def _format_duration(seconds: float) -> str:
     """Convierte segundos en una duración legible."""
     total_seconds = max(0, int(round(seconds)))
@@ -87,17 +126,7 @@ def run_pipeline(config_path: Path) -> dict[str, Any]:
     config = load_config(config_path)
 
     # Resolver las rutas relativas respecto del proyecto.
-    corpus_root = Path(config["corpus_root"]).expanduser()
-
-    if not corpus_root.is_absolute():
-        corpus_root = (config_path.parent / corpus_root).resolve()
-
-    output_dir = Path(config.get("output_dir", "outputs"))
-
-    if not output_dir.is_absolute():
-        output_dir = (
-            config_path.parent.parent / output_dir
-        ).resolve()
+    corpus_root, output_dir = resolve_paths(config, config_path)
 
     # Inventario: incluye archivos auxiliares que no necesariamente
     # serán extraídos en esta versión.
@@ -310,12 +339,40 @@ def run_pipeline(config_path: Path) -> dict[str, Any]:
         document_mapping,
     )
 
+    # Unidades normativas: agrupación de los fragmentos por artículo.
+    # Opcional (build_units: false la desactiva); no altera los fragmentos.
+    units_report = None
+
+    if config.get("build_units", True):
+        units_report = write_units(output_dir, all_chunks)
+        print(
+            f"[UNIDADES] {units_report['units_count']} unidades | "
+            f"cobertura {units_report['validation']['chunks_covered']}"
+            f"/{units_report['validation']['chunks_count']} fragmentos"
+        )
+
     # Validación posterior a la extracción y fragmentación.
     report = validate_run(
         inventory,
         document_results,
         all_chunks,
     )
+
+    if units_report is not None:
+        units_validation = units_report["validation"]
+        report["units"] = {
+            "units_version": UNITS_VERSION,
+            "units_count": units_report["units_count"],
+            "units_by_kind": units_report["units_by_kind"],
+            "documents_by_mode": units_report["documents_by_mode"],
+            "chunks_covered": units_validation["chunks_covered"],
+            "passed": units_validation["passed"],
+        }
+        if not units_validation["passed"]:
+            report["errors"].extend(
+                f"Unidades: {error}" for error in units_validation["errors"]
+            )
+            report["passed"] = False
 
     report.update({
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -324,7 +381,7 @@ def run_pipeline(config_path: Path) -> dict[str, Any]:
         "python_version": sys.version,
         "platform": platform.platform(),
         "config_sha256": sha256_file(config_path),
-        "pipeline_version": "0.3.0",
+        "pipeline_version": "0.4.0",
         "source_extensions": sorted({
             item["extension"] for item in inventory
         }),
