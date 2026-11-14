@@ -1,0 +1,94 @@
+<mxfile host="Electron">
+  <diagram id="ingesta" name="Ingestión">
+    <mxGraphModel dx="2188" dy="1079" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1000" pageHeight="1080" background="#FFFFFF" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Helvetica;" value="&lt;b&gt;&lt;font style=&quot;font-size:16px&quot;&gt;Ingestión del corpus normativo&lt;/font&gt;&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot; color=&quot;#555555&quot;&gt;proceso offline · se ejecuta una vez por versión del corpus&lt;/font&gt;" vertex="1">
+          <mxGeometry height="45" width="330" x="20" y="15" as="geometry" />
+        </mxCell>
+        <mxCell id="corpus" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;size=8;fillColor=#F4F4F4;strokeColor=#8C8C8C;strokeWidth=1.5;fontFamily=Helvetica;fontSize=11;fontColor=#1A1A1A;" value="&lt;b&gt;Corpus normativo&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;46 normas · 13 externas · 33 internas&lt;br&gt;PDF y DOCX&lt;/font&gt;" vertex="1">
+          <mxGeometry height="85" width="220" x="380" y="60" as="geometry" />
+        </mxCell>
+        <mxCell id="g1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=5;fillColor=#F7F9FB;strokeColor=#8C9BAE;strokeWidth=1.5;dashed=1;verticalAlign=top;align=left;spacingLeft=12;spacingTop=6;fontFamily=Helvetica;fontSize=12;fontColor=#4A6585;" value="&lt;b&gt;Procesamiento de documentos&lt;/b&gt;" vertex="1">
+          <mxGeometry height="430" width="480" x="250" y="180" as="geometry" />
+        </mxCell>
+        <mxCell id="s1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=22;fillColor=#EEF3F8;strokeColor=#4A6585;strokeWidth=1.5;fontFamily=Helvetica;fontSize=12;fontColor=#1A1A1A;" value="&lt;b&gt;Inventario&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;identificación estable por norma (EXT##, INT##) · sha256&lt;/font&gt;" vertex="1">
+          <mxGeometry height="55" width="400" x="290" y="222" as="geometry" />
+        </mxCell>
+        <mxCell id="s2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=22;fillColor=#EEF3F8;strokeColor=#4A6585;strokeWidth=1.5;fontFamily=Helvetica;fontSize=12;fontColor=#1A1A1A;" value="&lt;b&gt;Extracción estructurada&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;Docling · OCR solo si el texto digital es insuficiente&lt;br&gt;texto, encabezados, tablas y páginas&lt;/font&gt;" vertex="1">
+          <mxGeometry height="68" width="400" x="290" y="305" as="geometry" />
+        </mxCell>
+        <mxCell id="s3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=22;fillColor=#EEF3F8;strokeColor=#4A6585;strokeWidth=1.5;fontFamily=Helvetica;fontSize=12;fontColor=#1A1A1A;" value="&lt;b&gt;Fragmentación jerárquica&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;HierarchicalChunker de Docling&lt;br&gt;9.623 fragmentos&lt;/font&gt;" vertex="1">
+          <mxGeometry height="68" width="400" x="290" y="401" as="geometry" />
+        </mxCell>
+        <mxCell id="s4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=22;fillColor=#FFE3A8;strokeColor=#C07A12;strokeWidth=1.5;fontFamily=Helvetica;fontSize=12;fontColor=#1A1A1A;" value="&lt;b&gt;Unidades normativas&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;fragmento → artículo, disposición o sección&lt;br&gt;2.748 unidades (índice small-to-big)&lt;/font&gt;" vertex="1">
+          <mxGeometry height="68" width="400" x="290" y="497" as="geometry" />
+        </mxCell>
+        <mxCell id="units" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;size=8;fillColor=#F4F4F4;strokeColor=#8C8C8C;strokeWidth=1.5;fontFamily=Helvetica;fontSize=11;fontColor=#1A1A1A;" value="&lt;b&gt;units.jsonl&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;2.748 unidades&lt;br&gt;fragmento → artículo&lt;/font&gt;" vertex="1">
+          <mxGeometry height="80" width="170" x="790" y="490" as="geometry" />
+        </mxCell>
+        <mxCell id="g2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=5;fillColor=#F7F9FB;strokeColor=#8C9BAE;strokeWidth=1.5;dashed=1;verticalAlign=top;align=left;spacingLeft=12;spacingTop=6;fontFamily=Helvetica;fontSize=12;fontColor=#4A6585;" value="&lt;b&gt;Indexación&lt;/b&gt;" vertex="1">
+          <mxGeometry height="230" width="480" x="250" y="645" as="geometry" />
+        </mxCell>
+        <mxCell id="s5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=22;fillColor=#EEF3F8;strokeColor=#4A6585;strokeWidth=1.5;fontFamily=Helvetica;fontSize=12;fontColor=#1A1A1A;" value="&lt;b&gt;Embeddings de los fragmentos&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;multilingual-e5-base · prefijo «passage:»&lt;br&gt;768 dimensiones · normalizados&lt;/font&gt;" vertex="1">
+          <mxGeometry height="68" width="400" x="290" y="687" as="geometry" />
+        </mxCell>
+        <mxCell id="s6" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=22;fillColor=#EEF3F8;strokeColor=#4A6585;strokeWidth=1.5;fontFamily=Helvetica;fontSize=12;fontColor=#1A1A1A;" value="&lt;b&gt;Índice híbrido en Qdrant&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;vectorial (coseno) + índice de texto BM25 nativo&lt;/font&gt;" vertex="1">
+          <mxGeometry height="58" width="400" x="290" y="790" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;size=8;fillColor=#F4F4F4;strokeColor=#8C8C8C;strokeWidth=1.5;fontFamily=Helvetica;fontSize=11;fontColor=#1A1A1A;" value="&lt;b&gt;Modelo E5&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;multilingual-e5-base&lt;br&gt;local, sin descargas&lt;/font&gt;" vertex="1">
+          <mxGeometry height="80" width="170" x="40" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="qdrant" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;size=8;fillColor=#F4F4F4;strokeColor=#8C8C8C;strokeWidth=1.5;fontFamily=Helvetica;fontSize=11;fontColor=#1A1A1A;" value="&lt;b&gt;Qdrant&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;colección istae_chunks_e5_base&lt;br&gt;9.623 fragmentos&lt;br&gt;vectores + índice de texto&lt;/font&gt;" vertex="1">
+          <mxGeometry height="95" width="230" x="375" y="910" as="geometry" />
+        </mxCell>
+        <mxCell id="c1" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;size=8;fillColor=#FFF2D9;strokeColor=#C07A12;strokeWidth=1.5;fontFamily=Helvetica;fontSize=11;fontColor=#1A1A1A;" value="&lt;b&gt;Matriz de reglamentos&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;Excel del trabajo&lt;/font&gt;" vertex="1">
+          <mxGeometry height="75" width="170" x="40" y="222" as="geometry" />
+        </mxCell>
+        <mxCell id="c2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=22;fillColor=#FFE3A8;strokeColor=#C07A12;strokeWidth=1.5;fontFamily=Helvetica;fontSize=12;fontColor=#1A1A1A;" value="&lt;b&gt;Catálogo normativo&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;46 normas · rangos jerárquicos&lt;br&gt;214 relaciones&lt;br&gt;«Desarrolla» · «Debe ser compatible con»&lt;/font&gt;" vertex="1">
+          <mxGeometry height="95" width="190" x="30" y="335" as="geometry" />
+        </mxCell>
+        <mxCell id="cat" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;size=8;fillColor=#FFF2D9;strokeColor=#C07A12;strokeWidth=1.5;fontFamily=Helvetica;fontSize=11;fontColor=#1A1A1A;" value="&lt;b&gt;catalogo_normativo.json&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;copia verificada (sha256)&lt;/font&gt;" vertex="1">
+          <mxGeometry height="80" width="170" x="40" y="470" as="geometry" />
+        </mxCell>
+        <mxCell id="note" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Helvetica;align=center;" value="&lt;font style=&quot;font-size:10px&quot; color=&quot;#555555&quot;&gt;&lt;i&gt;Qdrant, units.jsonl, el catálogo y los modelos forman el paquete de datos que la consulta usa en solo lectura.&lt;/i&gt;&lt;/font&gt;" vertex="1">
+          <mxGeometry height="30" width="480" x="250" y="1025" as="geometry" />
+        </mxCell>
+        <mxCell id="f0" edge="1" parent="1" source="corpus" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#4A6585;strokeWidth=1.5;endArrow=block;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="s1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f_s1" edge="1" parent="1" source="s1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#4A6585;strokeWidth=1.5;endArrow=block;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="s2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f_s2" edge="1" parent="1" source="s2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#4A6585;strokeWidth=1.5;endArrow=block;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="s3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f_s3" edge="1" parent="1" source="s3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#4A6585;strokeWidth=1.5;endArrow=block;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="s4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f_s5" edge="1" parent="1" source="s5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#4A6585;strokeWidth=1.5;endArrow=block;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="s6">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f_s6" edge="1" parent="1" source="s6" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#4A6585;strokeWidth=1.5;endArrow=block;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="qdrant">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f_g" edge="1" parent="1" source="g1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#4A6585;strokeWidth=1.5;endArrow=block;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="g2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="o_units" edge="1" parent="1" source="s4" style="edgeStyle=orthogonalEdgeStyle;html=1;dashed=1;strokeColor=#9A9A9A;strokeWidth=1.5;endArrow=block;endFill=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" target="units">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="d_e5" edge="1" parent="1" source="e5" style="edgeStyle=orthogonalEdgeStyle;html=1;dashed=1;strokeColor=#9A9A9A;strokeWidth=1.5;endArrow=block;endFill=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" target="s5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c12" edge="1" parent="1" source="c1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#C07A12;strokeWidth=1.5;endArrow=block;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="c2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c23" edge="1" parent="1" source="c2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#C07A12;strokeWidth=1.5;endArrow=block;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="cat">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
